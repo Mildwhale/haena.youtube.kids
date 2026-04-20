@@ -65,47 +65,122 @@
     <div id="video-list"></div>
 
     <script>
+        console.log("1. JS 스크립트 실행 시작");
+
+        // TODO: 실제 API 키로 교체
         const API_KEY = 'AIzaSyB_EFF3EoaIiYG6SbZZIB0OCzeGl53MqMg';
         const PLAYLIST_ID = 'UUPlwvN0w4qFSP1FllALB92w'; // Numberblocks 업로드 재생목록
 
         let player;
+        let isPlayerReady = false;
         let nextPageToken = '';
         let isFetching = false;
+        let firstVideoId = '';
 
+        // 1. 영상 데이터 즉시 호출 (IFrame 로드와 무관하게 실행)
+        fetchVideos();
+
+        // 2. YouTube IFrame API 비동기 로드
         const tag = document.createElement('script');
         tag.src = "https://www.youtube.com/iframe_api";
         const firstScriptTag = document.getElementsByTagName('script')[0];
         firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
 
         function onYouTubeIframeAPIReady() {
+            console.log("3. YouTube IFrame API 로드 완료 및 콜백 실행");
             player = new YT.Player('player', {
                 height: '100%',
                 width: '100%',
-                videoId: '', 
+                videoId: firstVideoId, 
                 playerVars: {
                     'playsinline': 1,
                     'rel': 0,
                     'modestbranding': 1,
                     'controls': 1
+                },
+                events: {
+                    'onReady': () => {
+                        isPlayerReady = true;
+                        console.log("4. 플레이어 객체 준비 완료");
+                    }
                 }
             });
-            fetchVideos();
         }
 
         async function fetchVideos() {
             if (isFetching) return;
             isFetching = true;
+            console.log(`2. Data API 호출 시도 (pageToken: ${nextPageToken || '없음'})`);
 
             let url = `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=50&playlistId=${PLAYLIST_ID}&key=${API_KEY}`;
-            if (nextPageToken) {
-                url += `&pageToken=${nextPageToken}`;
-            }
+            if (nextPageToken) url += `&pageToken=${nextPageToken}`;
 
             try {
                 const response = await fetch(url);
                 const data = await response.json();
                 
+                if (data.error) {
+                    console.error("Data API 에러 응답:", data.error.message);
+                    return;
+                }
+                
                 if (data.items) {
+                    console.log(`- ${data.items.length}개 영상 데이터 수신 완료`);
                     renderVideoList(data.items);
                     
-                    if (!nextPageToken && data.items
+                    if (!nextPageToken && data.items.length > 0) {
+                        firstVideoId = data.items[0].snippet.resourceId.videoId;
+                        if (isPlayerReady && player && player.cueVideoById) {
+                            player.cueVideoById(firstVideoId);
+                        }
+                    }
+                    
+                    nextPageToken = data.nextPageToken || null;
+                }
+            } catch (error) {
+                console.error('Data API 네트워크 에러:', error);
+            } finally {
+                isFetching = false;
+            }
+        }
+
+        function renderVideoList(items) {
+            const listContainer = document.getElementById('video-list');
+            
+            items.forEach(item => {
+                const snippet = item.snippet;
+                const videoId = snippet.resourceId.videoId;
+                const title = snippet.title;
+                const thumbnailUrl = snippet.thumbnails.high?.url || snippet.thumbnails.medium?.url || snippet.thumbnails.default?.url;
+
+                const div = document.createElement('div');
+                div.className = 'video-item';
+                div.onclick = () => {
+                    if (isPlayerReady && player) {
+                        player.loadVideoById(videoId);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                    } else {
+                        console.warn("플레이어가 아직 준비되지 않았습니다.");
+                    }
+                };
+
+                div.innerHTML = `
+                    <img class="video-thumbnail" src="${thumbnailUrl}" alt="thumbnail" loading="lazy">
+                    <div class="video-title">${title}</div>
+                `;
+                listContainer.appendChild(div);
+            });
+        }
+
+        const observer = new IntersectionObserver((entries) => {
+            if (entries[0].isIntersecting && nextPageToken && !isFetching) {
+                fetchVideos();
+            }
+        }, { rootMargin: '100px' });
+
+        const scrollTarget = document.createElement('div');
+        document.body.appendChild(scrollTarget);
+        observer.observe(scrollTarget);
+    </script>
+</body>
+</html>
