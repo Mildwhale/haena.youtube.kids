@@ -10,23 +10,21 @@
         body { 
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
             margin: 0; padding: 0; background-color: #f0f0f0; 
-            padding-bottom: 60px; /* 탭바 공간 확보 */
         }
         
-        /* 뷰 컨트롤 */
-        .view { display: none; height: 100dvh; flex-direction: column; overflow: hidden; }
-        #channels-view { display: flex; } /* 초기 화면 */
+        .view { display: none; height: 100dvh; flex-direction: column; overflow: hidden; padding-bottom: 60px; box-sizing: border-box; }
+        #player-view { padding-bottom: 0; } /* 플레이어 뷰는 탭바 공간 제외 */
 
         /* 상단 바 */
         .nav-bar {
             background: #fff; padding: 12px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            display: flex; align-items: center; flex-shrink: 0; z-index: 200; box-sizing: border-box;
+            display: flex; align-items: center; flex-shrink: 0; z-index: 200;
         }
         .back-btn { background: none; border: none; font-size: 16px; font-weight: bold; color: #007AFF; cursor: pointer; }
-        .view-title { margin-left: 16px; font-weight: 600; font-size: 16px; color: #333; }
+        .view-title { margin-left: 16px; font-weight: 600; font-size: 16px; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
         /* 하단 탭바 */
-        .tab-bar {
+        #main-tab-bar {
             position: fixed; bottom: 0; width: 100%; height: 60px;
             background: #fff; display: flex; border-top: 1px solid #ddd; z-index: 300;
         }
@@ -37,34 +35,31 @@
         .tab-item.active { color: #007AFF; }
         .tab-icon { font-size: 20px; margin-bottom: 2px; }
 
-        /* 리스트 스타일 */
+        /* 그리드 리스트 (상하 배열 통일) */
         .grid-list-container { flex-grow: 1; overflow-y: auto; padding: 12px; -webkit-overflow-scrolling: touch; }
-        .grid-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; padding-bottom: 40px; }
+        .grid-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; padding-bottom: 20px; }
         
-        .item-card { background: #fff; border-radius: 8px; overflow: hidden; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1); position: relative; }
+        .item-card { background: #fff; border-radius: 8px; overflow: hidden; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1); position: relative; display: flex; flex-direction: column; }
         .item-thumbnail { width: 100%; aspect-ratio: 16/9; object-fit: cover; display: block; }
-        .item-title { padding: 10px; font-size: 13px; font-weight: 500; color: #333; line-height: 1.4; }
+        .item-title { padding: 10px; font-size: 13px; font-weight: 500; color: #333; line-height: 1.4; flex-grow: 1; }
 
-        /* 즐겨찾기 별표 버튼 */
+        /* 즐겨찾기 버튼 (썸네일 우측 상단) */
         .fav-toggle-btn {
-            position: absolute; bottom: 8px; right: 8px; background: rgba(255,255,255,0.9);
+            position: absolute; top: 8px; right: 8px; background: rgba(0,0,0,0.5);
             border: none; border-radius: 50%; width: 32px; height: 32px; font-size: 18px;
-            display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            display: flex; align-items: center; justify-content: center; cursor: pointer; color: #fff; z-index: 10;
         }
-        .fav-toggle-btn.active { color: #FFD700; }
+        .fav-toggle-btn.active { color: #FFD700; background: rgba(0,0,0,0.7); }
 
-        /* 플레이어 뷰 전용 */
+        /* 플레이어 뷰 스타일 */
         #player-content { display: flex; flex-direction: column; flex-grow: 1; overflow: hidden; }
         #player-container { width: 100%; aspect-ratio: 16/9; background: #000; flex-shrink: 0; }
-        #video-list { flex-grow: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 12px; background: #f0f0f0; }
-        
-        .video-list-item { display: flex; background: #fff; border-radius: 8px; overflow: hidden; cursor: pointer; position: relative; }
-        .video-list-item .item-thumbnail { width: 120px; aspect-ratio: 16/9; flex-shrink: 0; }
+        #video-scroll-list { flex-grow: 1; overflow-y: auto; background: #f0f0f0; }
 
         @media screen and (orientation: landscape) {
             #player-content { flex-direction: row; }
             #player-container { width: 70%; height: 100%; }
-            #video-list { width: 30%; height: 100%; border-left: 1px solid #e0e0e0; }
+            #video-scroll-list { width: 30%; height: 100%; border-left: 1px solid #e0e0e0; }
         }
     </style>
 </head>
@@ -84,7 +79,7 @@
     </div>
 
     <div id="favorites-view" class="view">
-        <div class="nav-bar"><span class="view-title">⭐ 내가 좋아하는 영상</span></div>
+        <div class="nav-bar"><span class="view-title">⭐ 즐겨찾기</span></div>
         <div class="grid-list-container"><div id="fav-grid" class="grid-list"></div></div>
     </div>
 
@@ -95,11 +90,13 @@
         </div>
         <div id="player-content">
             <div id="player-container"><div id="player"></div></div>
-            <div id="video-list"></div>
+            <div id="video-scroll-list" class="grid-list-container">
+                <div id="video-grid" class="grid-list"></div>
+            </div>
         </div>
     </div>
 
-    <div class="tab-bar">
+    <div id="main-tab-bar" class="tab-bar">
         <div class="tab-item active" id="tab-home" onclick="clickTab('channels-view')">
             <span class="tab-icon">🏠</span><span>홈</span>
         </div>
@@ -110,15 +107,13 @@
 
     <script>
         const API_KEY = 'AIzaSyB_EFF3EoaIiYG6SbZZIB0OCzeGl53MqMg';
-        const FAV_KEY = 'kidsTubeFavs';
-        const CHANNELS = [
-            { id: 'UCPlwvN0w4qFSP1FllALB92w', title: 'Numberblocks' },
-            { id: 'UCqXwKu6dKobXEQFhdKtiJLQ', title: '핑크퐁' }
-        ];
+        const FAV_KEY = 'kidsTubeFavs_v1';
+        const CACHE_KEY = 'kidsTubeChannelCache';
+        const CACHE_TIME = 24 * 60 * 60 * 1000; // 24시간
+        const CHANNEL_IDS = ['UCPlwvN0w4qFSP1FllALB92w', 'UCqXwKu6dKobXEQFhdKtiJLQ'];
 
         let player, isPlayerReady = false;
         let favorites = JSON.parse(localStorage.getItem(FAV_KEY) || '[]');
-        let currentView = 'channels-view';
 
         function onYouTubeIframeAPIReady() {
             player = new YT.Player('player', {
@@ -128,14 +123,17 @@
             });
         }
 
-        // --- 네비게이션 로직 ---
+        // --- 네비게이션 & 탭 제어 ---
         function switchView(viewId) {
             document.querySelectorAll('.view').forEach(v => v.style.display = 'none');
-            document.getElementById(viewId).style.display = 'flex';
-            currentView = viewId;
-            
+            const targetView = document.getElementById(viewId);
+            targetView.style.display = 'flex';
+
+            // 플레이어 뷰에서는 탭바 숨기기
+            const tabBar = document.getElementById('main-tab-bar');
+            tabBar.style.display = (viewId === 'player-view') ? 'none' : 'flex';
+
             if(viewId === 'favorites-view') renderFavorites();
-            if(viewId === 'channels-view') renderChannels();
         }
 
         function clickTab(viewId) {
@@ -151,40 +149,64 @@
             const idx = favorites.findIndex(v => v.id === video.id);
             if (idx > -1) favorites.splice(idx, 1);
             else favorites.push(video);
-            
             localStorage.setItem(FAV_KEY, JSON.stringify(favorites));
             
-            // 현재 화면이 즐겨찾기면 즉시 갱신, 아니면 버튼 아이콘만 토글
-            if(currentView === 'favorites-view') renderFavorites();
-            else event.target.classList.toggle('active');
+            // 현재 화면이 즐겨찾기면 즉시 갱신, 아니면 버튼 상태만 토글
+            const activeViewId = Array.from(document.querySelectorAll('.view')).find(v => v.style.display === 'flex')?.id;
+            if(activeViewId === 'favorites-view') renderFavorites();
+            else event.currentTarget.classList.toggle('active');
         }
 
         function renderFavorites() {
             const container = document.getElementById('fav-grid');
-            container.innerHTML = favorites.length ? '' : '<div style="padding:40px; grid-column:1/-1; text-align:center;">별표를 눌러 영상을 추가해보세요!</div>';
-            
+            container.innerHTML = favorites.length ? '' : '<div style="padding:40px; grid-column:1/-1; text-align:center;">즐겨찾는 영상이 없습니다.</div>';
             favorites.forEach(v => {
                 const div = document.createElement('div');
                 div.className = 'item-card';
-                div.onclick = () => playVideo(v.id, v.title);
+                div.onclick = () => { switchView('player-view'); playVideo(v.id); };
                 div.innerHTML = `
+                    <button class="fav-toggle-btn active" onclick="toggleFav(event, {id:'${v.id}', title:'${v.title}', thumbnail:'${v.thumbnail}'})">★</button>
                     <img class="item-thumbnail" src="${v.thumbnail}">
                     <div class="item-title">${v.title}</div>
-                    <button class="fav-toggle-btn active" onclick="toggleFav(event, {id:'${v.id}', title:'${v.title}', thumbnail:'${v.thumbnail}'})">★</button>
                 `;
                 container.appendChild(div);
             });
         }
 
-        // --- 채널/영상 로직 (기존 로직 유지 및 보완) ---
-        function renderChannels() {
+        // --- 채널 로딩 (캐싱 적용) ---
+        async function loadChannels() {
+            const container = document.getElementById('channel-grid');
+            const cachedData = JSON.parse(localStorage.getItem(CACHE_KEY));
+            
+            // 캐시가 유효한지 확인
+            if (cachedData && (Date.now() - cachedData.timestamp < CACHE_TIME)) {
+                renderChannelList(cachedData.items);
+                return;
+            }
+
+            try {
+                const res = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=snippet&id=${CHANNEL_IDS.join(',')}&key=${API_KEY}`);
+                const data = await res.json();
+                if (data.items) {
+                    localStorage.setItem(CACHE_KEY, JSON.stringify({ items: data.items, timestamp: Date.now() }));
+                    renderChannelList(data.items);
+                }
+            } catch (e) {
+                container.innerHTML = '<div style="padding:20px;">정보를 가져오지 못했습니다.</div>';
+            }
+        }
+
+        function renderChannelList(items) {
             const container = document.getElementById('channel-grid');
             container.innerHTML = '';
-            CHANNELS.forEach(c => {
+            items.forEach(c => {
                 const div = document.createElement('div');
                 div.className = 'item-card';
-                div.onclick = () => openChannel(c.id, c.title);
-                div.innerHTML = `<div style="padding:40px; text-align:center; font-weight:bold;">${c.title}</div>`;
+                div.onclick = () => openChannel(c.id, c.snippet.title);
+                div.innerHTML = `
+                    <img class="item-thumbnail" style="aspect-ratio:1/1" src="${c.snippet.thumbnails.medium.url}">
+                    <div class="item-title" style="text-align:center">${c.snippet.title}</div>
+                `;
                 container.appendChild(div);
             });
         }
@@ -210,7 +232,7 @@
             switchView('player-view');
             const res = await fetch(`https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${id}&maxResults=50&key=${API_KEY}`);
             const data = await res.json();
-            const container = document.getElementById('video-list');
+            const container = document.getElementById('video-grid');
             container.innerHTML = '';
             data.items.forEach((v, i) => {
                 const vid = v.snippet.resourceId.videoId;
@@ -219,31 +241,24 @@
                 if(i === 0 && isPlayerReady) player.cueVideoById(vid);
                 
                 const div = document.createElement('div');
-                div.className = 'video-list-item';
+                div.className = 'item-card';
                 const isFav = favorites.some(f => f.id === vid);
                 div.innerHTML = `
+                    <button class="fav-toggle-btn ${isFav?'active':''}" onclick="toggleFav(event, {id:'${vid}', title:'${tit.replace(/'/g, "")}', thumbnail:'${thumb}'})">★</button>
                     <img class="item-thumbnail" src="${thumb}" onclick="playVideo('${vid}')">
                     <div class="item-title" onclick="playVideo('${vid}')">${tit}</div>
-                    <button class="fav-toggle-btn ${isFav?'active':''}" onclick="toggleFav(event, {id:'${vid}', title:'${tit.replace(/'/g, "")}', thumbnail:'${thumb}'})">★</button>
                 `;
                 container.appendChild(div);
             });
         }
 
-        function playVideo(id) {
-            if(isPlayerReady) player.loadVideoById(id);
-        }
+        function playVideo(id) { if(isPlayerReady) player.loadVideoById(id); }
+        function handlePlayerBack() { if(isPlayerReady) player.stopVideo(); switchView('playlists-view'); }
 
-        function handlePlayerBack() {
-            if(isPlayerReady) player.stopVideo();
-            switchView('playlists-view');
-        }
-
-        // 초기화
         const tag = document.createElement('script');
         tag.src = "https://www.youtube.com/iframe_api";
         document.head.appendChild(tag);
-        renderChannels();
+        loadChannels();
     </script>
 </body>
 </html>
