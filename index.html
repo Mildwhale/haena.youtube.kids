@@ -298,7 +298,11 @@
                 div.className = 'video-list-item';
                 div.onclick = () => {
                     if (isPlayerReady && player) player.loadVideoById(videoId);
-                    container.scrollTo({ top: 0, behavior: 'smooth' });
+                    
+                    // 세로 모드(Portrait)일 때만 리스트 스크롤을 최상단으로 이동
+                    if (window.matchMedia("(orientation: portrait)").matches) {
+                        container.scrollTo({ top: 0, behavior: 'smooth' });
+                    }
                 };
 
                 const thumbnailUrl = snippet.thumbnails.medium?.url || snippet.thumbnails.high?.url || snippet.thumbnails.default?.url;
