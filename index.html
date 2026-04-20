@@ -25,11 +25,11 @@
             align-items: center;
             flex-shrink: 0;
             z-index: 200;
+            box-sizing: border-box;
         }
         .back-btn { background: none; border: none; font-size: 16px; font-weight: bold; color: #007AFF; cursor: pointer; padding: 0; }
         .view-title { margin-left: 16px; font-weight: 600; font-size: 16px; color: #333; }
 
-        /* 재생목록 뷰 (그리드 유지) */
         .grid-list { 
             display: grid; 
             grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); 
@@ -46,7 +46,6 @@
             line-height: 1.4; word-break: keep-all; 
         }
 
-        /* 플레이어 뷰 레이아웃 */
         #player-content {
             display: flex;
             flex-direction: column;
@@ -58,25 +57,39 @@
         }
         iframe { width: 100%; height: 100%; border: none; }
         
-        /* 영상 목록 (리스트형) */
         #video-list { 
-            flex-grow: 1; overflow-y: auto; padding: 12px; 
-            display: flex; flex-direction: column; gap: 12px; background: #f0f0f0;
+            flex-grow: 1; 
+            overflow-y: auto; 
+            padding: 12px; 
+            display: flex; 
+            flex-direction: column; 
+            gap: 12px; 
+            background: #f0f0f0;
+            box-sizing: border-box; /* 패딩 오버플로우 방지 */
+            -webkit-overflow-scrolling: touch;
         }
         .video-list-item { 
             display: flex; flex-direction: row; background: #fff; 
             border-radius: 8px; overflow: hidden; cursor: pointer; 
             box-shadow: 0 1px 3px rgba(0,0,0,0.1); 
+            flex-shrink: 0; /* 강제 압축에 의한 찌그러짐 방지 */
         }
-        .video-list-item .item-thumbnail { width: 140px; flex-shrink: 0; }
-        .video-list-item .item-title { padding: 10px; display: flex; align-items: center; }
+        .video-list-item .item-thumbnail { 
+            width: 140px; 
+            flex-shrink: 0; 
+            aspect-ratio: 16/9; 
+            object-fit: cover; 
+            align-self: flex-start; /* 타이틀 길이에 따른 썸네일 세로 늘어남 방지 */
+        }
+        .video-list-item .item-title { padding: 10px; display: flex; align-items: center; font-size: 13px; }
 
-        /* 가로 모드 (Landscape) 전용 레이아웃 */
         @media screen and (orientation: landscape) {
             #player-content { flex-direction: row; }
             #player-container { width: 70%; height: 100%; aspect-ratio: auto; }
-            #video-list { width: 30%; height: 100%; border-left: 1px solid #e0e0e0; }
-            /* 가로 모드에서는 우측 공간이 좁으므로 썸네일/타이틀을 상하 배치 */
+            #video-list { 
+                width: 30%; height: 100%; border-left: 1px solid #e0e0e0; 
+                box-sizing: border-box;
+            }
             .video-list-item { flex-direction: column; }
             .video-list-item .item-thumbnail { width: 100%; }
             .video-list-item .item-title { padding: 8px; align-items: flex-start; }
@@ -207,7 +220,6 @@
         function renderVideoList(items) {
             const container = document.getElementById('video-list');
             
-            // 기존 옵저버 타겟 제거
             const oldTarget = document.getElementById('scroll-target');
             if (oldTarget) oldTarget.remove();
             
@@ -226,15 +238,14 @@
                 container.appendChild(div);
             });
 
-            // 스크롤 타겟 재삽입
             const scrollTarget = document.createElement('div');
             scrollTarget.id = 'scroll-target';
             scrollTarget.style.height = '1px';
+            scrollTarget.style.flexShrink = '0';
             container.appendChild(scrollTarget);
             observer.observe(scrollTarget);
         }
 
-        // 독립된 스크롤 영역(#video-list) 내부에서 감지하도록 옵저버 root 설정
         const observer = new IntersectionObserver((entries) => {
             if (entries[0].isIntersecting && nextPageToken && !isFetching && currentPlaylistId) {
                 fetchVideos();
