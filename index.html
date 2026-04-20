@@ -11,54 +11,26 @@
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
             margin: 0; padding: 0; background-color: #f0f0f0; 
         }
-        
         .view { display: none; height: 100dvh; flex-direction: column; overflow: hidden; padding-bottom: 60px; box-sizing: border-box; }
-        
-        /* 앱 진입 시 홈 화면이 바로 보이도록 설정 */
-        #channels-view { display: flex; } 
         #player-view { padding-bottom: 0; }
-
-        .nav-bar {
-            background: #fff; padding: 12px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            display: flex; align-items: center; flex-shrink: 0; z-index: 200;
-        }
+        .nav-bar { background: #fff; padding: 12px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; align-items: center; flex-shrink: 0; z-index: 200; }
         .back-btn { background: none; border: none; font-size: 16px; font-weight: bold; color: #007AFF; cursor: pointer; }
         .view-title { margin-left: 16px; font-weight: 600; font-size: 16px; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-        #main-tab-bar {
-            position: fixed; bottom: 0; width: 100%; height: 60px;
-            background: #fff; display: flex; border-top: 1px solid #ddd; z-index: 300;
-        }
-        .tab-item { 
-            flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; 
-            font-size: 11px; color: #888; cursor: pointer;
-        }
+        #main-tab-bar { position: fixed; bottom: 0; width: 100%; height: 60px; background: #fff; display: flex; border-top: 1px solid #ddd; z-index: 300; }
+        .tab-item { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 11px; color: #888; cursor: pointer; }
         .tab-item.active { color: #007AFF; }
         .tab-icon { font-size: 20px; margin-bottom: 2px; }
-
         .grid-list-container { flex-grow: 1; overflow-y: auto; padding: 12px; -webkit-overflow-scrolling: touch; }
         .grid-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; padding-bottom: 20px; }
-        
         .item-card { background: #fff; border-radius: 8px; overflow: hidden; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1); position: relative; display: flex; flex-direction: column; }
         .item-thumbnail { width: 100%; aspect-ratio: 16/9; object-fit: cover; display: block; }
         .item-title { padding: 10px; font-size: 13px; font-weight: 500; color: #333; line-height: 1.4; flex-grow: 1; }
-
-        .fav-toggle-btn {
-            position: absolute; top: 8px; right: 8px; background: rgba(0,0,0,0.5);
-            border: none; border-radius: 50%; width: 32px; height: 32px; font-size: 18px;
-            display: flex; align-items: center; justify-content: center; cursor: pointer; color: #fff; z-index: 10;
-        }
+        .fav-toggle-btn { position: absolute; top: 8px; right: 8px; background: rgba(0,0,0,0.5); border: none; border-radius: 50%; width: 32px; height: 32px; font-size: 18px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #fff; z-index: 10; }
         .fav-toggle-btn.active { color: #FFD700; background: rgba(0,0,0,0.7); }
-
         #player-content { display: flex; flex-direction: column; flex-grow: 1; overflow: hidden; }
         #player-container { width: 100%; aspect-ratio: 16/9; background: #000; flex-shrink: 0; }
         #video-scroll-list { flex-grow: 1; overflow-y: auto; background: #f0f0f0; }
-
-        @media screen and (orientation: landscape) {
-            #player-content { flex-direction: row; }
-            #player-container { width: 70%; height: 100%; }
-            #video-scroll-list { width: 30%; height: 100%; border-left: 1px solid #e0e0e0; }
-        }
+        @media screen and (orientation: landscape) { #player-content { flex-direction: row; } #player-container { width: 70%; height: 100%; } #video-scroll-list { width: 30%; height: 100%; border-left: 1px solid #e0e0e0; } }
     </style>
 </head>
 <body>
@@ -73,7 +45,10 @@
             <button class="back-btn" onclick="switchView('channels-view')">← 뒤로</button>
             <span class="view-title" id="current-channel-title">재생목록</span>
         </div>
-        <div class="grid-list-container"><div id="playlist-grid" class="grid-list"></div></div>
+        <div class="grid-list-container">
+            <div id="playlist-grid" class="grid-list"></div>
+            <div id="playlist-target" style="height: 10px;"></div>
+        </div>
     </div>
 
     <div id="favorites-view" class="view">
@@ -90,6 +65,7 @@
             <div id="player-container"><div id="player"></div></div>
             <div id="video-scroll-list" class="grid-list-container">
                 <div id="video-grid" class="grid-list"></div>
+                <div id="video-target" style="height: 10px;"></div>
             </div>
         </div>
     </div>
@@ -107,11 +83,14 @@
         const API_KEY = 'AIzaSyB_EFF3EoaIiYG6SbZZIB0OCzeGl53MqMg';
         const FAV_KEY = 'kidsTubeFavs_v1';
         const CACHE_KEY = 'kidsTubeChannelCache';
-        const CACHE_TIME = 24 * 60 * 60 * 1000;
         const CHANNEL_IDS = ['UCPlwvN0w4qFSP1FllALB92w', 'UCqXwKu6dKobXEQFhdKtiJLQ'];
 
         let player, isPlayerReady = false;
         let favorites = JSON.parse(localStorage.getItem(FAV_KEY) || '[]');
+        
+        // 페이징 상태
+        let curChannelId = '', playlistToken = '', isFetchingPlaylists = false;
+        let curPlaylistId = '', videoToken = '', isFetchingVideos = false;
 
         function onYouTubeIframeAPIReady() {
             player = new YT.Player('player', {
@@ -123,20 +102,15 @@
 
         function switchView(viewId) {
             document.querySelectorAll('.view').forEach(v => v.style.display = 'none');
-            const targetView = document.getElementById(viewId);
-            targetView.style.display = 'flex';
-
-            const tabBar = document.getElementById('main-tab-bar');
-            tabBar.style.display = (viewId === 'player-view') ? 'none' : 'flex';
-
+            document.getElementById(viewId).style.display = 'flex';
+            document.getElementById('main-tab-bar').style.display = (viewId === 'player-view') ? 'none' : 'flex';
             if(viewId === 'favorites-view') renderFavorites();
         }
 
         function clickTab(viewId) {
             document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
             const tabId = (viewId === 'channels-view' || viewId === 'playlists-view') ? 'tab-home' : 'tab-fav';
-            const tabElem = document.getElementById(tabId);
-            if(tabElem) tabElem.classList.add('active');
+            document.getElementById(tabId).classList.add('active');
             switchView(viewId);
         }
 
@@ -147,8 +121,7 @@
             else favorites.push(video);
             localStorage.setItem(FAV_KEY, JSON.stringify(favorites));
             
-            const activeView = Array.from(document.querySelectorAll('.view')).find(v => v.style.display === 'flex');
-            if(activeView && activeView.id === 'favorites-view') renderFavorites();
+            if(document.getElementById('favorites-view').style.display === 'flex') renderFavorites();
             else event.currentTarget.classList.toggle('active');
         }
 
@@ -158,35 +131,22 @@
             favorites.forEach(v => {
                 const div = document.createElement('div');
                 div.className = 'item-card';
-                div.onclick = () => { switchView('player-view'); playVideo(v.id); };
-                div.innerHTML = `
-                    <button class="fav-toggle-btn active" onclick="toggleFav(event, {id:'${v.id}', title:'${v.title}', thumbnail:'${v.thumbnail}'})">★</button>
-                    <img class="item-thumbnail" src="${v.thumbnail}">
-                    <div class="item-title">${v.title}</div>
-                `;
+                div.onclick = () => { switchView('player-view'); if(isPlayerReady) player.loadVideoById(v.id); };
+                div.innerHTML = `<button class="fav-toggle-btn active" onclick="toggleFav(event, {id:'${v.id}', title:'${v.title}', thumbnail:'${v.thumbnail}'})">★</button><img class="item-thumbnail" src="${v.thumbnail}"><div class="item-title">${v.title}</div>`;
                 container.appendChild(div);
             });
         }
 
         async function loadChannels() {
             const container = document.getElementById('channel-grid');
-            const cachedData = JSON.parse(localStorage.getItem(CACHE_KEY));
-            
-            if (cachedData && (Date.now() - cachedData.timestamp < CACHE_TIME)) {
-                renderChannelList(cachedData.items);
-                return;
-            }
+            const cached = JSON.parse(localStorage.getItem(CACHE_KEY));
+            if (cached && (Date.now() - cached.timestamp < 86400000)) { renderChannelList(cached.items); return; }
 
             try {
                 const res = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=snippet&id=${CHANNEL_IDS.join(',')}&key=${API_KEY}`);
                 const data = await res.json();
-                if (data.items) {
-                    localStorage.setItem(CACHE_KEY, JSON.stringify({ items: data.items, timestamp: Date.now() }));
-                    renderChannelList(data.items);
-                }
-            } catch (e) {
-                container.innerHTML = '<div style="padding:20px;">정보 로드 실패</div>';
-            }
+                if (data.items) { localStorage.setItem(CACHE_KEY, JSON.stringify({ items: data.items, timestamp: Date.now() })); renderChannelList(data.items); }
+            } catch (e) { container.innerHTML = '<div style="padding:20px;">로드 실패</div>'; }
         }
 
         function renderChannelList(items) {
@@ -196,68 +156,78 @@
                 const div = document.createElement('div');
                 div.className = 'item-card';
                 div.onclick = () => openChannel(c.id, c.snippet.title);
-                div.innerHTML = `
-                    <img class="item-thumbnail" style="aspect-ratio:1/1" src="${c.snippet.thumbnails.medium.url}">
-                    <div class="item-title" style="text-align:center">${c.snippet.title}</div>
-                `;
+                div.innerHTML = `<img class="item-thumbnail" style="aspect-ratio:1/1" src="${c.snippet.thumbnails.medium.url}"><div class="item-title" style="text-align:center">${c.snippet.title}</div>`;
                 container.appendChild(div);
             });
         }
 
-        async function openChannel(id, title) {
+        async function openChannel(id, title, isMore = false) {
+            if (isFetchingPlaylists) return;
+            if (!isMore) { curChannelId = id; playlistToken = ''; document.getElementById('playlist-grid').innerHTML = ''; switchView('playlists-view'); }
             document.getElementById('current-channel-title').textContent = title;
-            switchView('playlists-view');
-            const res = await fetch(`https://www.googleapis.com/youtube/v3/playlists?part=snippet&channelId=${id}&maxResults=50&key=${API_KEY}`);
-            const data = await res.json();
-            const container = document.getElementById('playlist-grid');
-            container.innerHTML = '';
-            data.items.forEach(p => {
-                const div = document.createElement('div');
-                div.className = 'item-card';
-                div.onclick = () => openPlaylist(p.id, p.snippet.title);
-                div.innerHTML = `<img class="item-thumbnail" src="${p.snippet.thumbnails.medium.url}"><div class="item-title">${p.snippet.title}</div>`;
-                container.appendChild(div);
-            });
+            
+            isFetchingPlaylists = true;
+            let url = `https://www.googleapis.com/youtube/v3/playlists?part=snippet&channelId=${id}&maxResults=20&key=${API_KEY}`;
+            if (playlistToken) url += `&pageToken=${playlistToken}`;
+
+            try {
+                const res = await fetch(url);
+                const data = await res.json();
+                playlistToken = data.nextPageToken || '';
+                const container = document.getElementById('playlist-grid');
+                data.items.forEach(p => {
+                    const div = document.createElement('div');
+                    div.className = 'item-card';
+                    div.onclick = () => openPlaylist(p.id, p.snippet.title);
+                    div.innerHTML = `<img class="item-thumbnail" src="${p.snippet.thumbnails.medium.url}"><div class="item-title">${p.snippet.title}</div>`;
+                    container.appendChild(div);
+                });
+            } catch (e) { console.error(e); } finally { isFetchingPlaylists = false; }
         }
 
-        async function openPlaylist(id, title) {
+        async function openPlaylist(id, title, isMore = false) {
+            if (isFetchingVideos) return;
+            if (!isMore) { curPlaylistId = id; videoToken = ''; document.getElementById('video-grid').innerHTML = ''; switchView('player-view'); }
             document.getElementById('current-playlist-title').textContent = title;
-            switchView('player-view');
-            const res = await fetch(`https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${id}&maxResults=50&key=${API_KEY}`);
-            const data = await res.json();
-            const container = document.getElementById('video-grid');
-            container.innerHTML = '';
-            data.items.forEach((v, i) => {
-                const vid = v.snippet.resourceId.videoId;
-                const thumb = v.snippet.thumbnails.medium.url;
-                const tit = v.snippet.title;
-                if(i === 0 && isPlayerReady) player.cueVideoById(vid);
-                
-                const div = document.createElement('div');
-                div.className = 'item-card';
-                const isFav = favorites.some(f => f.id === vid);
-                div.innerHTML = `
-                    <button class="fav-toggle-btn ${isFav?'active':''}" onclick="toggleFav(event, {id:'${vid}', title:'${tit.replace(/'/g, "")}', thumbnail:'${thumb}'})">★</button>
-                    <img class="item-thumbnail" src="${thumb}" onclick="playVideo('${vid}')">
-                    <div class="item-title" onclick="playVideo('${vid}')">${tit}</div>
-                `;
-                container.appendChild(div);
-            });
+
+            isFetchingVideos = true;
+            let url = `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${id}&maxResults=20&key=${API_KEY}`;
+            if (videoToken) url += `&pageToken=${videoToken}`;
+
+            try {
+                const res = await fetch(url);
+                const data = await res.json();
+                videoToken = data.nextPageToken || '';
+                const container = document.getElementById('video-grid');
+                data.items.forEach((v, i) => {
+                    const vid = v.snippet.resourceId.videoId;
+                    const thumb = v.snippet.thumbnails.medium.url;
+                    const tit = v.snippet.title;
+                    if(!isMore && i === 0 && isPlayerReady) player.cueVideoById(vid);
+                    const isFav = favorites.some(f => f.id === vid);
+                    const div = document.createElement('div');
+                    div.className = 'item-card';
+                    div.innerHTML = `<button class="fav-toggle-btn ${isFav?'active':''}" onclick="toggleFav(event, {id:'${vid}', title:'${tit.replace(/'/g, "")}', thumbnail:'${thumb}'})">★</button><img class="item-thumbnail" src="${thumb}" onclick="if(isPlayerReady) player.loadVideoById('${vid}')"><div class="item-title" onclick="if(isPlayerReady) player.loadVideoById('${vid}')">${tit}</div>`;
+                    container.appendChild(div);
+                });
+            } catch (e) { console.error(e); } finally { isFetchingVideos = false; }
         }
 
-        function playVideo(id) { if(isPlayerReady) player.loadVideoById(id); }
         function handlePlayerBack() { if(isPlayerReady) player.stopVideo(); switchView('playlists-view'); }
 
-        // 초기화 시점 로직 강화
-        document.addEventListener('DOMContentLoaded', () => {
-            loadChannels();
-            // 명시적으로 홈 탭 활성화 상태로 시작
-            clickTab('channels-view'); 
-        });
+        // 무한 스크롤 옵저버
+        const playlistObserver = new IntersectionObserver(entries => {
+            if (entries[0].isIntersecting && playlistToken && !isFetchingPlaylists) openChannel(curChannelId, document.getElementById('current-channel-title').textContent, true);
+        }, { rootMargin: '200px' });
+        playlistObserver.observe(document.getElementById('playlist-target'));
 
-        const tag = document.createElement('script');
-        tag.src = "https://www.youtube.com/iframe_api";
-        document.head.appendChild(tag);
+        const videoObserver = new IntersectionObserver(entries => {
+            if (entries[0].isIntersecting && videoToken && !isFetchingVideos) openPlaylist(curPlaylistId, document.getElementById('current-playlist-title').textContent, true);
+        }, { rootMargin: '200px' });
+        videoObserver.observe(document.getElementById('video-target'));
+
+        document.addEventListener('DOMContentLoaded', () => { loadChannels(); clickTab('channels-view'); });
+        const tag = document.createElement('script'); tag.src = "https://www.youtube.com/iframe_api"; document.head.appendChild(tag);
     </script>
 </body>
 </html>
