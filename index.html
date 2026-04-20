@@ -7,10 +7,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>Kids Tube MVP</title>
     <style>
-        body { 
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
-            margin: 0; padding: 0; background-color: #f0f0f0; 
-        }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; background-color: #f0f0f0; }
         .view { display: none; height: 100dvh; flex-direction: column; overflow: hidden; padding-bottom: 60px; box-sizing: border-box; }
         #player-view { padding-bottom: 0; }
         .nav-bar { background: #fff; padding: 12px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; align-items: center; flex-shrink: 0; z-index: 200; }
@@ -87,8 +84,6 @@
 
         let player, isPlayerReady = false;
         let favorites = JSON.parse(localStorage.getItem(FAV_KEY) || '[]');
-        
-        // 페이징 상태
         let curChannelId = '', playlistToken = '', isFetchingPlaylists = false;
         let curPlaylistId = '', videoToken = '', isFetchingVideos = false;
 
@@ -121,32 +116,47 @@
             else favorites.push(video);
             localStorage.setItem(FAV_KEY, JSON.stringify(favorites));
             
-            if(document.getElementById('favorites-view').style.display === 'flex') renderFavorites();
-            else event.currentTarget.classList.toggle('active');
+            const activeView = Array.from(document.querySelectorAll('.view')).find(v => v.style.display === 'flex');
+            // 플레이어 내 즐겨찾기 리스트 재생 중일 때도 갱신
+            if(activeView.id === 'favorites-view' || document.getElementById('current-playlist-title').textContent === '⭐ 즐겨찾기 재생') {
+                const listId = activeView.id === 'favorites-view' ? 'fav-grid' : 'video-grid';
+                renderFavoritesInList(listId);
+            } else {
+                event.currentTarget.classList.toggle('active');
+            }
         }
 
-        function renderFavorites() {
-            const container = document.getElementById('fav-grid');
+        function renderFavorites() { renderFavoritesInList('fav-grid'); }
+
+        function renderFavoritesInList(containerId) {
+            const container = document.getElementById(containerId);
             container.innerHTML = favorites.length ? '' : '<div style="padding:40px; grid-column:1/-1; text-align:center;">즐겨찾는 영상이 없습니다.</div>';
             favorites.forEach(v => {
                 const div = document.createElement('div');
                 div.className = 'item-card';
-                div.onclick = () => { switchView('player-view'); if(isPlayerReady) player.loadVideoById(v.id); };
+                div.onclick = () => playFromFavorites(v.id);
                 div.innerHTML = `<button class="fav-toggle-btn active" onclick="toggleFav(event, {id:'${v.id}', title:'${v.title}', thumbnail:'${v.thumbnail}'})">★</button><img class="item-thumbnail" src="${v.thumbnail}"><div class="item-title">${v.title}</div>`;
                 container.appendChild(div);
             });
         }
 
+        // 즐겨찾기 목록에서 재생 시 호출
+        function playFromFavorites(videoId) {
+            switchView('player-view');
+            document.getElementById('current-playlist-title').textContent = '⭐ 즐겨찾기 재생';
+            videoToken = ''; // 즐겨찾기 모드에선 페이징 중단
+            renderFavoritesInList('video-grid');
+            if(isPlayerReady) player.loadVideoById(videoId);
+        }
+
         async function loadChannels() {
-            const container = document.getElementById('channel-grid');
             const cached = JSON.parse(localStorage.getItem(CACHE_KEY));
             if (cached && (Date.now() - cached.timestamp < 86400000)) { renderChannelList(cached.items); return; }
-
             try {
                 const res = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=snippet&id=${CHANNEL_IDS.join(',')}&key=${API_KEY}`);
                 const data = await res.json();
                 if (data.items) { localStorage.setItem(CACHE_KEY, JSON.stringify({ items: data.items, timestamp: Date.now() })); renderChannelList(data.items); }
-            } catch (e) { container.innerHTML = '<div style="padding:20px;">로드 실패</div>'; }
+            } catch (e) { document.getElementById('channel-grid').innerHTML = '<div style="padding:20px;">로드 실패</div>'; }
         }
 
         function renderChannelList(items) {
@@ -165,22 +175,19 @@
             if (isFetchingPlaylists) return;
             if (!isMore) { curChannelId = id; playlistToken = ''; document.getElementById('playlist-grid').innerHTML = ''; switchView('playlists-view'); }
             document.getElementById('current-channel-title').textContent = title;
-            
             isFetchingPlaylists = true;
             let url = `https://www.googleapis.com/youtube/v3/playlists?part=snippet&channelId=${id}&maxResults=20&key=${API_KEY}`;
             if (playlistToken) url += `&pageToken=${playlistToken}`;
-
             try {
                 const res = await fetch(url);
                 const data = await res.json();
                 playlistToken = data.nextPageToken || '';
-                const container = document.getElementById('playlist-grid');
                 data.items.forEach(p => {
                     const div = document.createElement('div');
                     div.className = 'item-card';
                     div.onclick = () => openPlaylist(p.id, p.snippet.title);
                     div.innerHTML = `<img class="item-thumbnail" src="${p.snippet.thumbnails.medium.url}"><div class="item-title">${p.snippet.title}</div>`;
-                    container.appendChild(div);
+                    document.getElementById('playlist-grid').appendChild(div);
                 });
             } catch (e) { console.error(e); } finally { isFetchingPlaylists = false; }
         }
@@ -189,16 +196,13 @@
             if (isFetchingVideos) return;
             if (!isMore) { curPlaylistId = id; videoToken = ''; document.getElementById('video-grid').innerHTML = ''; switchView('player-view'); }
             document.getElementById('current-playlist-title').textContent = title;
-
             isFetchingVideos = true;
             let url = `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${id}&maxResults=20&key=${API_KEY}`;
             if (videoToken) url += `&pageToken=${videoToken}`;
-
             try {
                 const res = await fetch(url);
                 const data = await res.json();
                 videoToken = data.nextPageToken || '';
-                const container = document.getElementById('video-grid');
                 data.items.forEach((v, i) => {
                     const vid = v.snippet.resourceId.videoId;
                     const thumb = v.snippet.thumbnails.medium.url;
@@ -208,21 +212,27 @@
                     const div = document.createElement('div');
                     div.className = 'item-card';
                     div.innerHTML = `<button class="fav-toggle-btn ${isFav?'active':''}" onclick="toggleFav(event, {id:'${vid}', title:'${tit.replace(/'/g, "")}', thumbnail:'${thumb}'})">★</button><img class="item-thumbnail" src="${thumb}" onclick="if(isPlayerReady) player.loadVideoById('${vid}')"><div class="item-title" onclick="if(isPlayerReady) player.loadVideoById('${vid}')">${tit}</div>`;
-                    container.appendChild(div);
+                    document.getElementById('video-grid').appendChild(div);
                 });
             } catch (e) { console.error(e); } finally { isFetchingVideos = false; }
         }
 
-        function handlePlayerBack() { if(isPlayerReady) player.stopVideo(); switchView('playlists-view'); }
+        function handlePlayerBack() {
+            if(isPlayerReady) player.stopVideo();
+            if(document.getElementById('current-playlist-title').textContent === '⭐ 즐겨찾기 재생') switchView('favorites-view');
+            else switchView('playlists-view');
+        }
 
-        // 무한 스크롤 옵저버
         const playlistObserver = new IntersectionObserver(entries => {
             if (entries[0].isIntersecting && playlistToken && !isFetchingPlaylists) openChannel(curChannelId, document.getElementById('current-channel-title').textContent, true);
         }, { rootMargin: '200px' });
         playlistObserver.observe(document.getElementById('playlist-target'));
 
         const videoObserver = new IntersectionObserver(entries => {
-            if (entries[0].isIntersecting && videoToken && !isFetchingVideos) openPlaylist(curPlaylistId, document.getElementById('current-playlist-title').textContent, true);
+            // 즐겨찾기 재생 모드가 아닐 때만 작동
+            if (entries[0].isIntersecting && videoToken && !isFetchingVideos && document.getElementById('current-playlist-title').textContent !== '⭐ 즐겨찾기 재생') {
+                openPlaylist(curPlaylistId, document.getElementById('current-playlist-title').textContent, true);
+            }
         }, { rootMargin: '200px' });
         videoObserver.observe(document.getElementById('video-target'));
 
