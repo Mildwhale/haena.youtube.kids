@@ -77,9 +77,10 @@
     </div>
 
     <script>
-        const API_KEY = 'AIzaSyB_EFF3EoaIiYG6SbZZIB0OCzeGl53MqMg';
+        const API_KEY = 'YOUR_YOUTUBE_API_KEY';
         const FAV_KEY = 'kidsTubeFavs_v1';
-        const CACHE_KEY = 'kidsTubeChannelCache';
+        const CH_CACHE_KEY = 'kidsTubeChannelCache';
+        const EXPIRY = 86400000; // 24시간
         const CHANNEL_IDS = ['UCPlwvN0w4qFSP1FllALB92w', 'UCqXwKu6dKobXEQFhdKtiJLQ'];
 
         let player, isPlayerReady = false;
@@ -95,6 +96,7 @@
             });
         }
 
+        // --- 공통 뷰 제어 ---
         function switchView(viewId) {
             document.querySelectorAll('.view').forEach(v => v.style.display = 'none');
             document.getElementById(viewId).style.display = 'flex';
@@ -109,6 +111,7 @@
             switchView(viewId);
         }
 
+        // --- 즐겨찾기 ---
         function toggleFav(event, video) {
             event.stopPropagation();
             const idx = favorites.findIndex(v => v.id === video.id);
@@ -117,16 +120,13 @@
             localStorage.setItem(FAV_KEY, JSON.stringify(favorites));
             
             const activeView = Array.from(document.querySelectorAll('.view')).find(v => v.style.display === 'flex');
-            // 플레이어 내 즐겨찾기 리스트 재생 중일 때도 갱신
-            if(activeView.id === 'favorites-view' || document.getElementById('current-playlist-title').textContent === '⭐ 즐겨찾기 재생') {
+            if(activeView && (activeView.id === 'favorites-view' || document.getElementById('current-playlist-title').textContent === '⭐ 즐겨찾기 재생')) {
                 const listId = activeView.id === 'favorites-view' ? 'fav-grid' : 'video-grid';
                 renderFavoritesInList(listId);
             } else {
                 event.currentTarget.classList.toggle('active');
             }
         }
-
-        function renderFavorites() { renderFavoritesInList('fav-grid'); }
 
         function renderFavoritesInList(containerId) {
             const container = document.getElementById(containerId);
@@ -140,23 +140,28 @@
             });
         }
 
-        // 즐겨찾기 목록에서 재생 시 호출
         function playFromFavorites(videoId) {
             switchView('player-view');
             document.getElementById('current-playlist-title').textContent = '⭐ 즐겨찾기 재생';
-            videoToken = ''; // 즐겨찾기 모드에선 페이징 중단
+            videoToken = '';
             renderFavoritesInList('video-grid');
             if(isPlayerReady) player.loadVideoById(videoId);
         }
 
+        // --- 채널 로드 (캐시 사용) ---
         async function loadChannels() {
-            const cached = JSON.parse(localStorage.getItem(CACHE_KEY));
-            if (cached && (Date.now() - cached.timestamp < 86400000)) { renderChannelList(cached.items); return; }
+            const container = document.getElementById('channel-grid');
+            const cached = JSON.parse(localStorage.getItem(CH_CACHE_KEY));
+            if (cached && (Date.now() - cached.timestamp < EXPIRY)) { renderChannelList(cached.items); return; }
+
             try {
                 const res = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=snippet&id=${CHANNEL_IDS.join(',')}&key=${API_KEY}`);
                 const data = await res.json();
-                if (data.items) { localStorage.setItem(CACHE_KEY, JSON.stringify({ items: data.items, timestamp: Date.now() })); renderChannelList(data.items); }
-            } catch (e) { document.getElementById('channel-grid').innerHTML = '<div style="padding:20px;">로드 실패</div>'; }
+                if (data.items) {
+                    localStorage.setItem(CH_CACHE_KEY, JSON.stringify({ items: data.items, timestamp: Date.now() }));
+                    renderChannelList(data.items);
+                }
+            } catch (e) { container.innerHTML = '<div style="padding:20px;">로드 실패</div>'; }
         }
 
         function renderChannelList(items) {
@@ -171,27 +176,67 @@
             });
         }
 
+        // --- 재생 목록 로드 (캐시 적용) ---
         async function openChannel(id, title, isMore = false) {
             if (isFetchingPlaylists) return;
-            if (!isMore) { curChannelId = id; playlistToken = ''; document.getElementById('playlist-grid').innerHTML = ''; switchView('playlists-view'); }
+            const container = document.getElementById('playlist-grid');
+            const cacheKey = `cache_pl_${id}`;
+
+            if (!isMore) {
+                curChannelId = id; playlistToken = ''; container.innerHTML = ''; switchView('playlists-view');
+                // 첫 페이지 진입 시 캐시 확인
+                const cached = JSON.parse(localStorage.getItem(cacheKey));
+                if (cached && (Date.now() - cached.timestamp < EXPIRY)) {
+                    renderPlaylists(cached.data);
+                    playlistToken = cached.nextToken || ''; // 캐시에 저장된 다음 페이지 토큰 복구
+                    return;
+                }
+            }
+            
             document.getElementById('current-channel-title').textContent = title;
             isFetchingPlaylists = true;
             let url = `https://www.googleapis.com/youtube/v3/playlists?part=snippet&channelId=${id}&maxResults=20&key=${API_KEY}`;
             if (playlistToken) url += `&pageToken=${playlistToken}`;
+
             try {
                 const res = await fetch(url);
                 const data = await res.json();
+                
+                // 첫 페이지일 때만 캐싱
+                if (!isMore && data.items) {
+                    const simplified = data.items.map(p => ({
+                        id: p.id,
+                        title: p.snippet.title,
+                        thumbnail: p.snippet.thumbnails.medium.url
+                    }));
+                    localStorage.setItem(cacheKey, JSON.stringify({
+                        data: simplified,
+                        nextToken: data.nextPageToken || '',
+                        timestamp: Date.now()
+                    }));
+                }
+
                 playlistToken = data.nextPageToken || '';
-                data.items.forEach(p => {
-                    const div = document.createElement('div');
-                    div.className = 'item-card';
-                    div.onclick = () => openPlaylist(p.id, p.snippet.title);
-                    div.innerHTML = `<img class="item-thumbnail" src="${p.snippet.thumbnails.medium.url}"><div class="item-title">${p.snippet.title}</div>`;
-                    document.getElementById('playlist-grid').appendChild(div);
-                });
+                renderPlaylists(data.items.map(p => ({
+                    id: p.id,
+                    title: p.snippet.title,
+                    thumbnail: p.snippet.thumbnails.medium.url
+                })));
             } catch (e) { console.error(e); } finally { isFetchingPlaylists = false; }
         }
 
+        function renderPlaylists(items) {
+            const container = document.getElementById('playlist-grid');
+            items.forEach(p => {
+                const div = document.createElement('div');
+                div.className = 'item-card';
+                div.onclick = () => openPlaylist(p.id, p.title);
+                div.innerHTML = `<img class="item-thumbnail" src="${p.thumbnail}"><div class="item-title">${p.title}</div>`;
+                container.appendChild(div);
+            });
+        }
+
+        // --- 영상 목록 로드 ---
         async function openPlaylist(id, title, isMore = false) {
             if (isFetchingVideos) return;
             if (!isMore) { curPlaylistId = id; videoToken = ''; document.getElementById('video-grid').innerHTML = ''; switchView('player-view'); }
@@ -223,18 +268,18 @@
             else switchView('playlists-view');
         }
 
-        const playlistObserver = new IntersectionObserver(entries => {
-            if (entries[0].isIntersecting && playlistToken && !isFetchingPlaylists) openChannel(curChannelId, document.getElementById('current-channel-title').textContent, true);
+        // 무한 스크롤
+        const plObserver = new IntersectionObserver(ent => {
+            if (ent[0].isIntersecting && playlistToken && !isFetchingPlaylists) openChannel(curChannelId, "", true);
         }, { rootMargin: '200px' });
-        playlistObserver.observe(document.getElementById('playlist-target'));
+        plObserver.observe(document.getElementById('playlist-target'));
 
-        const videoObserver = new IntersectionObserver(entries => {
-            // 즐겨찾기 재생 모드가 아닐 때만 작동
-            if (entries[0].isIntersecting && videoToken && !isFetchingVideos && document.getElementById('current-playlist-title').textContent !== '⭐ 즐겨찾기 재생') {
-                openPlaylist(curPlaylistId, document.getElementById('current-playlist-title').textContent, true);
+        const vidObserver = new IntersectionObserver(ent => {
+            if (ent[0].isIntersecting && videoToken && !isFetchingVideos && document.getElementById('current-playlist-title').textContent !== '⭐ 즐겨찾기 재생') {
+                openPlaylist(curPlaylistId, "", true);
             }
         }, { rootMargin: '200px' });
-        videoObserver.observe(document.getElementById('video-target'));
+        vidObserver.observe(document.getElementById('video-target'));
 
         document.addEventListener('DOMContentLoaded', () => { loadChannels(); clickTab('channels-view'); });
         const tag = document.createElement('script'); tag.src = "https://www.youtube.com/iframe_api"; document.head.appendChild(tag);
